@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Simulador de Colisiones 1D</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -131,9 +133,9 @@
                 </div>
             </div>
 
-            <!-- Content Grid: Block controls -->
+            <!-- Content Grid: Block controls and graphs -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-8">
-                <!-- Left Column: Red Block -->
+                <!-- Left Column: Red Block + Velocity Graph -->
                 <div class="space-y-4">
                     <h3 class="text-xl font-semibold text-red-400 text-center">Bloque Rojo</h3>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -158,9 +160,10 @@
                             <p>Posición Actual: <span id="currentP1Value">0.00</span> m</p>
                         </div>
                     </div>
+                    <div class="relative h-48"><canvas id="velocityChart"></canvas></div>
                 </div>
 
-                <!-- Right Column: Blue Block -->
+                <!-- Right Column: Blue Block + Momentum Graph -->
                 <div class="space-y-4">
                     <h3 class="text-xl font-semibold text-blue-400 text-center">Bloque Azul</h3>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -185,6 +188,7 @@
                              <p>Posición Actual: <span id="currentP2Value">0.00</span> m</p>
                         </div>
                     </div>
+                    <div class="relative h-48"><canvas id="momentumChart"></canvas></div>
                 </div>
             </div>
         </div>
@@ -236,7 +240,7 @@
         const timerDisplay = document.getElementById('timerDisplay');
 
         // --- Simulation State ---
-        const simSpaceWidth = 20; // The simulation space is now 20 meters wide
+        const simSpaceWidth = 20;
         let state = {
             m1: 5, v1: 10, x1: 5.0,
             m2: 3, v2: -8, x2: 15.0,
@@ -255,6 +259,63 @@
         let block1, block2;
         let animationFrameId;
         const collisionSynth = new Tone.Synth().toDestination();
+        
+        // --- Chart Setup ---
+        let velocityChart, momentumChart;
+        let chartData = {};
+
+        function resetChartData() {
+            chartData = {
+                v1: [], v2: [], vCM: [],
+                p1: [], p2: [], pTotal: []
+            };
+        }
+
+        const chartOptions = (title) => ({
+            responsive: true, maintainAspectRatio: false,
+            scales: {
+                x: {
+                    type: 'linear', position: 'bottom',
+                    title: { display: true, text: 'Tiempo (s)', color: '#d1d5db', font: {size: 10} },
+                    ticks: { color: '#9ca3af', maxTicksLimit: 6, font: {size: 10} },
+                    grid: { color: '#374151' }
+                },
+                y: {
+                    title: { display: true, text: title, color: '#d1d5db', font: {size: 12} },
+                    ticks: { color: '#9ca3af', font: {size: 10} },
+                    grid: { color: '#374151' }
+                }
+            },
+            plugins: { legend: { position: 'bottom', labels: { color: '#d1d5db', font: {size: 10}, boxWidth: 15 } } },
+            animation: { duration: 0 }
+        });
+
+        function createCharts() {
+            if(velocityChart) velocityChart.destroy();
+            if(momentumChart) momentumChart.destroy();
+            
+            const vCtx = document.getElementById('velocityChart').getContext('2d');
+            velocityChart = new Chart(vCtx, {
+                type: 'line',
+                data: { datasets: [
+                    { label: 'v_rojo', data: chartData.v1, borderColor: '#f87171', tension: 0.1, pointRadius: 0 },
+                    { label: 'v_azul', data: chartData.v2, borderColor: '#60a5fa', tension: 0.1, pointRadius: 0 },
+                    { label: 'v_CM', data: chartData.vCM, borderColor: '#facc15', tension: 0.1, pointRadius: 0, borderDash: [5, 5] }
+                ]},
+                options: chartOptions('Velocidad (m/s)')
+            });
+
+            const pCtx = document.getElementById('momentumChart').getContext('2d');
+            momentumChart = new Chart(pCtx, {
+                type: 'line',
+                data: { datasets: [
+                    { label: 'p_rojo', data: chartData.p1, borderColor: '#f87171', tension: 0.1, pointRadius: 0 },
+                    { label: 'p_azul', data: chartData.p2, borderColor: '#60a5fa', tension: 0.1, pointRadius: 0 },
+                    { label: 'Σp', data: chartData.pTotal, borderColor: '#e5e7eb', tension: 0.1, pointRadius: 0 }
+                ]},
+                options: chartOptions('Momento (kg·m/s)')
+            });
+        }
         
         // --- Simulation Classes ---
         class Block {
@@ -309,11 +370,12 @@
         // --- Core Functions ---
         function resetSimulation() {
             if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            readStateFromUI();
             state.isRunning = false;
             state.time = 0;
             state.hasRun = false;
             setSlidersDisabled(false);
-            readStateFromUI();
+            resetChartData();
             setupScene();
         }
 
@@ -329,6 +391,7 @@
             }
             runPauseBtn.textContent = 'Ejecutar';
             updateUIFromState();
+            createCharts(); // Create charts with the (now empty) data
             draw();
         }
 
@@ -487,6 +550,25 @@
             }
         }
         
+        function updateCharts() {
+            if(!state.isRunning) return;
+            const time = state.time;
+            
+            const comV = (block1.m * block1.v + block2.m * block2.v) / (block1.m + block2.m);
+            chartData.v1.push({x: time, y: block1.v});
+            chartData.v2.push({x: time, y: block2.v});
+            if(state.showCM) chartData.vCM.push({x: time, y: comV});
+            
+            const p1 = block1.m * block1.v;
+            const p2 = block2.m * block2.v;
+            chartData.p1.push({x: time, y: p1});
+            chartData.p2.push({x: time, y: p2});
+            chartData.pTotal.push({x: time, y: p1 + p2});
+            
+            velocityChart.update('none');
+            momentumChart.update('none');
+        }
+
         let lastTime = 0;
         function animate(timestamp) {
             if (!state.isRunning) return;
@@ -496,6 +578,7 @@
             update(deltaTime);
             draw();
             updateInfoBoxes(); 
+            updateCharts();
             timerDisplay.textContent = `Tiempo: ${state.time.toFixed(1)}s`;
             animationFrameId = requestAnimationFrame(animate);
         }
@@ -504,7 +587,6 @@
             sliders.forEach(slider => slider.disabled = disabled);
         }
 
-        // --- Event Listeners ---
         function handleRunPause() {
             if (Tone.context.state !== 'running') {
                 Tone.start();
@@ -513,7 +595,9 @@
             if (state.isRunning) {
                 if (!state.hasRun) {
                     readStateFromUI();
-                    setupScene();
+                    resetChartData(); // Clear previous data
+                    createCharts();   // Recreate charts for the new run
+                    setupScene();     // Set up blocks with initial state
                     state.hasRun = true;
                 }
                 runPauseBtn.textContent = 'Pausa';
