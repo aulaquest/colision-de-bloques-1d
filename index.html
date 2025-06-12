@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Simulador de Colisiones 1D</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -114,9 +112,8 @@
             <!-- Main controls row -->
             <div class="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-8 mb-6 pb-6 border-b border-gray-700">
                 <div class="space-y-4 w-full max-w-xs">
-                    <div class="grid grid-cols-3 gap-2">
-                        <button id="runBtn" class="btn btn-primary">Ejecutar</button>
-                        <button id="pauseBtn" class="btn">Pausa</button>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button id="runPauseBtn" class="btn btn-primary col-span-1">Ejecutar</button>
                         <button id="resetBtn" class="btn">Reiniciar</button>
                     </div>
                     <div>
@@ -134,9 +131,9 @@
                 </div>
             </div>
 
-            <!-- Content Grid: Block controls and graphs -->
+            <!-- Content Grid: Block controls -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-8">
-                <!-- Left Column: Red Block + Velocity Graph -->
+                <!-- Left Column: Red Block -->
                 <div class="space-y-4">
                     <h3 class="text-xl font-semibold text-red-400 text-center">Bloque Rojo</h3>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -161,10 +158,9 @@
                             <p>Posición Actual: <span id="currentP1Value">0.00</span> m</p>
                         </div>
                     </div>
-                    <div class="relative h-48"><canvas id="velocityChart"></canvas></div>
                 </div>
 
-                <!-- Right Column: Blue Block + Momentum Graph -->
+                <!-- Right Column: Blue Block -->
                 <div class="space-y-4">
                     <h3 class="text-xl font-semibold text-blue-400 text-center">Bloque Azul</h3>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -189,7 +185,6 @@
                              <p>Posición Actual: <span id="currentP2Value">0.00</span> m</p>
                         </div>
                     </div>
-                    <div class="relative h-48"><canvas id="momentumChart"></canvas></div>
                 </div>
             </div>
         </div>
@@ -204,8 +199,7 @@
         const canvas = document.getElementById('simulationCanvas');
         const ctx = canvas.getContext('2d');
 
-        const runBtn = document.getElementById('runBtn');
-        const pauseBtn = document.getElementById('pauseBtn');
+        const runPauseBtn = document.getElementById('runPauseBtn');
         const resetBtn = document.getElementById('resetBtn');
 
         const mass1Slider = document.getElementById('mass1');
@@ -262,54 +256,6 @@
         let animationFrameId;
         const collisionSynth = new Tone.Synth().toDestination();
         
-        // --- Chart Setup ---
-        let velocityChart, momentumChart;
-        const chartOptions = (title) => ({
-            responsive: true, maintainAspectRatio: false,
-            scales: {
-                x: {
-                    type: 'linear', position: 'bottom',
-                    title: { display: true, text: 'Tiempo (s)', color: '#d1d5db', font: {size: 10} },
-                    ticks: { color: '#9ca3af', maxTicksLimit: 6, font: {size: 10} },
-                    grid: { color: '#374151' }
-                },
-                y: {
-                    title: { display: true, text: title, color: '#d1d5db', font: {size: 12} },
-                    ticks: { color: '#9ca3af', font: {size: 10} },
-                    grid: { color: '#374151' }
-                }
-            },
-            plugins: { legend: { position: 'bottom', labels: { color: '#d1d5db', font: {size: 10}, boxWidth: 15 } } },
-            animation: { duration: 0 }
-        });
-
-        function createCharts() {
-            if(velocityChart) velocityChart.destroy();
-            if(momentumChart) momentumChart.destroy();
-            
-            const vCtx = document.getElementById('velocityChart').getContext('2d');
-            velocityChart = new Chart(vCtx, {
-                type: 'line',
-                data: { datasets: [
-                    { label: 'v_rojo', data: [], borderColor: '#f87171', tension: 0.1, pointRadius: 0 },
-                    { label: 'v_azul', data: [], borderColor: '#60a5fa', tension: 0.1, pointRadius: 0 },
-                    { label: 'v_CM', data: [], borderColor: '#facc15', tension: 0.1, pointRadius: 0, borderDash: [5, 5] }
-                ]},
-                options: chartOptions('Velocidad (m/s)')
-            });
-
-            const pCtx = document.getElementById('momentumChart').getContext('2d');
-            momentumChart = new Chart(pCtx, {
-                type: 'line',
-                data: { datasets: [
-                    { label: 'p_rojo', data: [], borderColor: '#f87171', tension: 0.1, pointRadius: 0 },
-                    { label: 'p_azul', data: [], borderColor: '#60a5fa', tension: 0.1, pointRadius: 0 },
-                    { label: 'Σp', data: [], borderColor: '#e5e7eb', tension: 0.1, pointRadius: 0 }
-                ]},
-                options: chartOptions('Momento (kg·m/s)')
-            });
-        }
-        
         // --- Simulation Classes ---
         class Block {
             constructor(mass, velocity, initialPosMeters, color, colorLight) {
@@ -344,26 +290,45 @@
                 this.x += pixelSpeed * dt * effectiveSpeed;
             }
         }
+        
+        function readStateFromUI() {
+            state.m1 = parseFloat(mass1Slider.value);
+            state.v1 = parseFloat(velocity1Slider.value);
+            state.x1 = parseFloat(position1Slider.value);
+            state.m2 = parseFloat(mass2Slider.value);
+            state.v2 = parseFloat(velocity2Slider.value);
+            state.x2 = parseFloat(position2Slider.value);
+            state.elasticity = parseFloat(elasticitySlider.value);
+            state.showCM = showCMToggle.checked;
+            state.showVectors = showVectorsToggle.checked;
+            state.showKE = showKEToggle.checked;
+            state.showMomentum = showMomentumToggle.checked;
+            state.slowMotion = slowMotionToggle.checked;
+        }
 
         // --- Core Functions ---
-        function initialize() {
-            canvas.width = canvas.offsetWidth;
-            canvas.height = canvas.offsetHeight;
+        function resetSimulation() {
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
             state.isRunning = false;
             state.time = 0;
             state.hasRun = false;
             setSlidersDisabled(false);
-            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            readStateFromUI();
+            setupScene();
+        }
 
+        function setupScene() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            
             block1 = new Block(state.m1, state.v1, state.x1, '#ef4444', '#fca5a5'); // Red
             block2 = new Block(state.m2, state.v2, state.x2, '#3b82f6', '#93c5fd'); // Blue
 
             if (block1.x + block1.width > block2.x) {
                block1.x = block2.x - block1.width - 1;
             }
-
+            runPauseBtn.textContent = 'Ejecutar';
             updateUIFromState();
-            createCharts();
             draw();
         }
 
@@ -375,11 +340,6 @@
             velocity2ValueSpan.textContent = state.v2.toFixed(1);
             position2ValueSpan.textContent = state.x2.toFixed(1);
             elasticityValueSpan.textContent = state.elasticity.toFixed(2);
-            showCMToggle.checked = state.showCM;
-            showVectorsToggle.checked = state.showVectors;
-            showKEToggle.checked = state.showKE;
-            showMomentumToggle.checked = state.showMomentum;
-            slowMotionToggle.checked = state.slowMotion;
             timerDisplay.textContent = `Tiempo: ${state.time.toFixed(1)}s`;
             updateInfoBoxes();
         }
@@ -396,7 +356,7 @@
             currentV1ValueSpan.textContent = block1.v.toFixed(2);
             currentV2ValueSpan.textContent = block2.v.toFixed(2);
             const pos1Meters = (block1.x / canvas.width) * simSpaceWidth;
-            const pos2Meters = (block2.x / canvas.width) * simSpaceWidth; // Use start of block for consistency
+            const pos2Meters = (block2.x / canvas.width) * simSpaceWidth;
             currentP1ValueSpan.textContent = pos1Meters.toFixed(2);
             currentP2ValueSpan.textContent = pos2Meters.toFixed(2);
         }
@@ -433,14 +393,12 @@
                 else if (i === simSpaceWidth) ctx.textAlign = 'right';
                 else ctx.textAlign = 'center';
 
-                // Main tick with label
                 ctx.beginPath();
                 ctx.moveTo(x, y);
                 ctx.lineTo(x, y + 5);
                 ctx.stroke();
                 ctx.fillText(i, x, y + 15);
 
-                // Minor tick (0.5)
                 if (i < simSpaceWidth) {
                     const midX = x + (canvas.width / simSpaceWidth / 2);
                     ctx.beginPath();
@@ -454,7 +412,7 @@
         function drawVector(ctx, block, value, color, yOffset, label) {
             const y = canvas.height - block.height - 40 - yOffset;
             const startX = block.x + block.width / 2;
-            const length = (value / simSpaceWidth) * canvas.width * 0.2; // Adjusted scale factor
+            const length = (value / simSpaceWidth) * canvas.width * 0.2;
             const endX = startX + length;
             
             ctx.strokeStyle = color;
@@ -529,28 +487,6 @@
             }
         }
         
-        function updateCharts() {
-            if(!state.isRunning) return;
-            const time = state.time;
-            const dataLength = velocityChart.data.datasets[0].data.length;
-            if (dataLength > 300) {
-                velocityChart.data.datasets.forEach(d => d.data.shift());
-                momentumChart.data.datasets.forEach(d => d.data.shift());
-            }
-            const comV = (block1.m * block1.v + block2.m * block2.v) / (block1.m + block2.m);
-            velocityChart.data.datasets[0].data.push({x: time, y: block1.v});
-            velocityChart.data.datasets[1].data.push({x: time, y: block2.v});
-            if(state.showCM) velocityChart.data.datasets[2].data.push({x: time, y: comV});
-            
-            const p1 = block1.m * block1.v;
-            const p2 = block2.m * block2.v;
-            momentumChart.data.datasets[0].data.push({x: time, y: p1});
-            momentumChart.data.datasets[1].data.push({x: time, y: p2});
-            momentumChart.data.datasets[2].data.push({x: time, y: p1 + p2});
-            velocityChart.update('none');
-            momentumChart.update('none');
-        }
-
         let lastTime = 0;
         function animate(timestamp) {
             if (!state.isRunning) return;
@@ -560,7 +496,6 @@
             update(deltaTime);
             draw();
             updateInfoBoxes(); 
-            updateCharts();
             timerDisplay.textContent = `Tiempo: ${state.time.toFixed(1)}s`;
             animationFrameId = requestAnimationFrame(animate);
         }
@@ -570,55 +505,60 @@
         }
 
         // --- Event Listeners ---
-        function setupEventListeners() {
-            runBtn.addEventListener('click', () => {
-                if (Tone.context.state !== 'running') {
-                    Tone.start();
-                }
-                if (!state.isRunning) {
-                    if (state.hasRun) initialize(); 
-                    state.isRunning = true;
+        function handleRunPause() {
+            if (Tone.context.state !== 'running') {
+                Tone.start();
+            }
+            state.isRunning = !state.isRunning;
+            if (state.isRunning) {
+                if (!state.hasRun) {
+                    readStateFromUI();
+                    setupScene();
                     state.hasRun = true;
-                    setSlidersDisabled(true);
-                    lastTime = performance.now();
-                    animate(lastTime);
                 }
-            });
-            pauseBtn.addEventListener('click', () => { 
-                state.isRunning = false;
+                runPauseBtn.textContent = 'Pausa';
+                setSlidersDisabled(true);
+                lastTime = performance.now();
+                animate(lastTime);
+            } else {
+                runPauseBtn.textContent = 'Seguir';
                 setSlidersDisabled(false);
-            });
-            resetBtn.addEventListener('click', initialize);
+                cancelAnimationFrame(animationFrameId);
+            }
+        }
 
-            mass1Slider.addEventListener('input', (e) => { state.m1 = parseFloat(e.target.value); initialize(); });
-            velocity1Slider.addEventListener('input', (e) => { state.v1 = parseFloat(e.target.value); initialize(); });
-            position1Slider.addEventListener('input', (e) => { state.x1 = parseFloat(e.target.value); initialize(); });
-            mass2Slider.addEventListener('input', (e) => { state.m2 = parseFloat(e.target.value); initialize(); });
-            velocity2Slider.addEventListener('input', (e) => { state.v2 = parseFloat(e.target.value); initialize(); });
-            position2Slider.addEventListener('input', (e) => { state.x2 = parseFloat(e.target.value); initialize(); });
-            
-            elasticitySlider.addEventListener('input', (e) => { 
-                state.elasticity = parseFloat(e.target.value);
-                updateUIFromState();
+        function setupEventListeners() {
+            runPauseBtn.addEventListener('click', handleRunPause);
+            resetBtn.addEventListener('click', resetSimulation);
+
+            sliders.forEach(slider => {
+                slider.addEventListener('input', () => {
+                    readStateFromUI();
+                    resetSimulation();
+                });
             });
             
-            showCMToggle.addEventListener('change', (e) => { state.showCM = e.target.checked; if(!state.isRunning) draw(); });
-            showVectorsToggle.addEventListener('change', (e) => { state.showVectors = e.target.checked; if(!state.isRunning) draw(); });
-            showKEToggle.addEventListener('change', (e) => { state.showKE = e.target.checked; if(!state.isRunning) draw(); });
-            showMomentumToggle.addEventListener('change', (e) => { state.showMomentum = e.target.checked; if(!state.isRunning) draw(); });
-            slowMotionToggle.addEventListener('change', (e) => { state.slowMotion = e.target.checked; });
+            [showCMToggle, showVectorsToggle, showKEToggle, showMomentumToggle, slowMotionToggle].forEach(toggle => {
+                toggle.addEventListener('change', () => {
+                    readStateFromUI();
+                    if (!state.isRunning) draw();
+                });
+            });
             
             let resizeTimeout;
             window.addEventListener('resize', () => {
                 clearTimeout(resizeTimeout);
-                resizeTimeout = setTimeout(initialize, 150);
+                resizeTimeout = setTimeout(() => {
+                    readStateFromUI();
+                    setupScene();
+                }, 150);
             });
         }
 
         // --- Initial Load ---
         document.addEventListener('DOMContentLoaded', () => {
+            resetSimulation();
             setupEventListeners();
-            initialize();
         });
     </script>
 </body>
