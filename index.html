@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Colisiones 1D</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body, html {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* gray-900 */
+            color: #d1d5db; /* gray-300 */
+            min-height: 100vh;
+        }
+        .control-panel {
+            background-color: #1f2937; /* gray-800 */
+            border-radius: 0.75rem;
+            border: 1px solid #374151; /* gray-700 */
+        }
+        .info-box {
+            background-color: #374151; /* gray-700 */
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+        }
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 8px;
+            background: #374151; /* gray-700 */
+            border-radius: 5px;
+            outline: none;
+            transition: background 0.2s;
+        }
+        input[type="range"]:disabled {
+            background: #4b5563; /* gray-600 */
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #4f46e5; /* indigo-600 */
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #e5e7eb; /* gray-200 */
+            transition: background 0.2s;
+        }
+        input[type="range"]:disabled::-webkit-slider-thumb {
+             background: #6b7280; /* gray-500 */
+             cursor: not-allowed;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #4f46e5; /* indigo-600 */
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #e5e7eb; /* gray-200 */
+        }
+        input[type="range"]:disabled::-moz-range-thumb {
+            background: #6b7280; /* gray-500 */
+            cursor: not-allowed;
+        }
+        .btn {
+            background-color: #374151;
+            border: 1px solid #4b5563;
+            transition: all 0.2s ease-in-out;
+            width: 100%;
+            padding: 0.5rem;
+            border-radius: 0.375rem;
+            font-weight: 600;
+            color: white;
+            font-size: 0.875rem; /* 14px */
+        }
+        .btn:hover {
+            background-color: #4b5563;
+        }
+        .btn-primary {
+            background-color: #4f46e5;
+            border-color: #4f46e5;
+        }
+        .btn-primary:hover {
+            background-color: #6366f1;
+        }
+        .checkbox-label {
+            font-size: 0.8rem; /* 12.8px - Smaller checkbox labels */
+        }
+        .slider-label {
+            font-size: 0.8rem; /* 12.8px - Smaller slider labels */
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <div class="max-w-7xl mx-auto flex flex-col p-4 gap-4">
+        <!-- Title -->
+        <h1 class="text-3xl font-bold text-center text-white">Simulador de Colisiones</h1>
+
+        <!-- Simulation Canvas -->
+        <div class="control-panel h-64 relative overflow-hidden">
+            <canvas id="simulationCanvas" class="absolute top-0 left-0 w-full h-full"></canvas>
+            <div id="timerDisplay" class="absolute top-2 right-3 text-lg font-mono text-white bg-black bg-opacity-25 px-2 rounded">Tiempo: 0.0s</div>
+        </div>
+        
+        <!-- Controls, Info, and Graphs Panel -->
+        <div class="control-panel p-4">
+            <!-- Main controls row -->
+            <div class="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-8 mb-6 pb-6 border-b border-gray-700">
+                <div class="space-y-4 w-full max-w-xs">
+                    <div class="grid grid-cols-3 gap-2">
+                        <button id="runBtn" class="btn btn-primary">Ejecutar</button>
+                        <button id="pauseBtn" class="btn">Pausa</button>
+                        <button id="resetBtn" class="btn">Reiniciar</button>
+                    </div>
+                    <div>
+                        <label for="elasticity" class="block text-sm font-medium mb-1 text-center">Elasticidad: <span id="elasticityValue">0.8</span></label>
+                        <input type="range" id="elasticity" min="0" max="1" value="0.8" step="0.01">
+                        <div class="flex justify-between text-xs text-gray-400"><span>Inelástica</span><span>Elástica</span></div>
+                    </div>
+                </div>
+                 <div class="grid grid-cols-2 gap-x-6 gap-y-3 pt-2">
+                    <label class="flex items-center gap-2 cursor-pointer checkbox-label"><input id="showCM" type="checkbox" class="h-4 w-4 rounded border-gray-500 text-indigo-600 focus:ring-indigo-600 bg-gray-700"><span>Ver CM</span></label>
+                    <label class="flex items-center gap-2 cursor-pointer checkbox-label"><input id="showVectors" type="checkbox" class="h-4 w-4 rounded border-gray-500 text-indigo-600 focus:ring-indigo-600 bg-gray-700"><span>Vector Velocidad</span></label>
+                    <label class="flex items-center gap-2 cursor-pointer checkbox-label"><input id="showKE" type="checkbox" class="h-4 w-4 rounded border-gray-500 text-indigo-600 focus:ring-indigo-600 bg-gray-700"><span>Ver E. Cinética</span></label>
+                    <label class="flex items-center gap-2 cursor-pointer checkbox-label"><input id="showMomentum" type="checkbox" class="h-4 w-4 rounded border-gray-500 text-indigo-600 focus:ring-indigo-600 bg-gray-700"><span>Vector Momento</span></label>
+                    <label class="flex items-center gap-2 cursor-pointer checkbox-label col-span-2 justify-center"><input id="slowMotion" type="checkbox" class="h-4 w-4 rounded border-gray-500 text-indigo-600 focus:ring-indigo-600 bg-gray-700"><span>Ralentizar (0.5x)</span></label>
+                </div>
+            </div>
+
+            <!-- Content Grid: Block controls and graphs -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-8">
+                <!-- Left Column: Red Block + Velocity Graph -->
+                <div class="space-y-4">
+                    <h3 class="text-xl font-semibold text-red-400 text-center">Bloque Rojo</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="space-y-4">
+                            <div>
+                                <label for="mass1" class="block slider-label font-medium mb-1">Masa (kg): <span id="mass1Value">5</span></label>
+                                <input type="range" id="mass1" min="1" max="20" value="5" step="0.5">
+                            </div>
+                            <div>
+                                <label for="velocity1" class="block slider-label font-medium mb-1">Velocidad (m/s): <span id="velocity1Value">10</span></label>
+                                <input type="range" id="velocity1" min="-20" max="20" value="10" step="0.5">
+                            </div>
+                             <div>
+                                <label for="position1" class="block slider-label font-medium mb-1">Posición Inicial (m): <span id="position1Value">5.0</span></label>
+                                <input type="range" id="position1" min="0" max="20" value="5" step="0.1">
+                            </div>
+                        </div>
+                        <div class="info-box text-xs space-y-1">
+                            <p>E. Cinética Inicial: <span id="ke1Value">0</span> J</p>
+                            <p>Momento Inicial: <span id="p1Value">0</span> kg·m/s</p>
+                            <p>Velocidad Actual: <span id="currentV1Value">0</span> m/s</p>
+                            <p>Posición Actual: <span id="currentP1Value">0.00</span> m</p>
+                        </div>
+                    </div>
+                    <div class="relative h-48"><canvas id="velocityChart"></canvas></div>
+                </div>
+
+                <!-- Right Column: Blue Block + Momentum Graph -->
+                <div class="space-y-4">
+                    <h3 class="text-xl font-semibold text-blue-400 text-center">Bloque Azul</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                         <div class="space-y-4">
+                            <div>
+                                <label for="mass2" class="block slider-label font-medium mb-1">Masa (kg): <span id="mass2Value">3</span></label>
+                                <input type="range" id="mass2" min="1" max="20" value="3" step="0.5">
+                            </div>
+                            <div>
+                                <label for="velocity2" class="block slider-label font-medium mb-1">Velocidad (m/s): <span id="velocity2Value">-8</span></label>
+                                <input type="range" id="velocity2" min="-20" max="20" value="-8" step="0.5">
+                            </div>
+                             <div>
+                                <label for="position2" class="block slider-label font-medium mb-1">Posición Inicial (m): <span id="position2Value">15.0</span></label>
+                                <input type="range" id="position2" min="0" max="20" value="15" step="0.1">
+                            </div>
+                        </div>
+                        <div class="info-box text-xs space-y-1">
+                            <p>E. Cinética Inicial: <span id="ke2Value">0</span> J</p>
+                            <p>Momento Inicial: <span id="p2Value">0</span> kg·m/s</p>
+                            <p>Velocidad Actual: <span id="currentV2Value">0</span> m/s</p>
+                             <p>Posición Actual: <span id="currentP2Value">0.00</span> m</p>
+                        </div>
+                    </div>
+                    <div class="relative h-48"><canvas id="momentumChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+        
+        <footer class="text-center text-gray-500 text-sm py-4">
+            Simulación de <a href="https://aulaquest.com" target="_blank" rel="noopener noreferrer" class="underline hover:text-indigo-400">aulaquest.com</a>
+        </footer>
+    </div>
+
+    <script>
+        // --- DOM Element Selection ---
+        const canvas = document.getElementById('simulationCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const runBtn = document.getElementById('runBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const resetBtn = document.getElementById('resetBtn');
+
+        const mass1Slider = document.getElementById('mass1');
+        const velocity1Slider = document.getElementById('velocity1');
+        const position1Slider = document.getElementById('position1');
+        const mass2Slider = document.getElementById('mass2');
+        const velocity2Slider = document.getElementById('velocity2');
+        const position2Slider = document.getElementById('position2');
+        const elasticitySlider = document.getElementById('elasticity');
+        const sliders = [mass1Slider, velocity1Slider, position1Slider, mass2Slider, velocity2Slider, position2Slider, elasticitySlider];
+
+        const showCMToggle = document.getElementById('showCM');
+        const showVectorsToggle = document.getElementById('showVectors');
+        const showKEToggle = document.getElementById('showKE');
+        const showMomentumToggle = document.getElementById('showMomentum');
+        const slowMotionToggle = document.getElementById('slowMotion');
+        
+        const mass1ValueSpan = document.getElementById('mass1Value');
+        const velocity1ValueSpan = document.getElementById('velocity1Value');
+        const position1ValueSpan = document.getElementById('position1Value');
+        const mass2ValueSpan = document.getElementById('mass2Value');
+        const velocity2ValueSpan = document.getElementById('velocity2Value');
+        const position2ValueSpan = document.getElementById('position2Value');
+        const elasticityValueSpan = document.getElementById('elasticityValue');
+        
+        const ke1ValueSpan = document.getElementById('ke1Value');
+        const p1ValueSpan = document.getElementById('p1Value');
+        const currentV1ValueSpan = document.getElementById('currentV1Value');
+        const currentP1ValueSpan = document.getElementById('currentP1Value');
+        const ke2ValueSpan = document.getElementById('ke2Value');
+        const p2ValueSpan = document.getElementById('p2Value');
+        const currentV2ValueSpan = document.getElementById('currentV2Value');
+        const currentP2ValueSpan = document.getElementById('currentP2Value');
+        const timerDisplay = document.getElementById('timerDisplay');
+
+        // --- Simulation State ---
+        const simSpaceWidth = 20; // The simulation space is now 20 meters wide
+        let state = {
+            m1: 5, v1: 10, x1: 5.0,
+            m2: 3, v2: -8, x2: 15.0,
+            elasticity: 0.8,
+            animationSpeed: 1,
+            isRunning: false,
+            time: 0,
+            showCM: false,
+            showVectors: false,
+            showKE: false,
+            showMomentum: false,
+            slowMotion: false,
+            hasRun: false
+        };
+        
+        let block1, block2;
+        let animationFrameId;
+        const collisionSynth = new Tone.Synth().toDestination();
+        
+        // --- Chart Setup ---
+        let velocityChart, momentumChart;
+        const chartOptions = (title) => ({
+            responsive: true, maintainAspectRatio: false,
+            scales: {
+                x: {
+                    type: 'linear', position: 'bottom',
+                    title: { display: true, text: 'Tiempo (s)', color: '#d1d5db', font: {size: 10} },
+                    ticks: { color: '#9ca3af', maxTicksLimit: 6, font: {size: 10} },
+                    grid: { color: '#374151' }
+                },
+                y: {
+                    title: { display: true, text: title, color: '#d1d5db', font: {size: 12} },
+                    ticks: { color: '#9ca3af', font: {size: 10} },
+                    grid: { color: '#374151' }
+                }
+            },
+            plugins: { legend: { position: 'bottom', labels: { color: '#d1d5db', font: {size: 10}, boxWidth: 15 } } },
+            animation: { duration: 0 }
+        });
+
+        function createCharts() {
+            if(velocityChart) velocityChart.destroy();
+            if(momentumChart) momentumChart.destroy();
+            
+            const vCtx = document.getElementById('velocityChart').getContext('2d');
+            velocityChart = new Chart(vCtx, {
+                type: 'line',
+                data: { datasets: [
+                    { label: 'v_rojo', data: [], borderColor: '#f87171', tension: 0.1, pointRadius: 0 },
+                    { label: 'v_azul', data: [], borderColor: '#60a5fa', tension: 0.1, pointRadius: 0 },
+                    { label: 'v_CM', data: [], borderColor: '#facc15', tension: 0.1, pointRadius: 0, borderDash: [5, 5] }
+                ]},
+                options: chartOptions('Velocidad (m/s)')
+            });
+
+            const pCtx = document.getElementById('momentumChart').getContext('2d');
+            momentumChart = new Chart(pCtx, {
+                type: 'line',
+                data: { datasets: [
+                    { label: 'p_rojo', data: [], borderColor: '#f87171', tension: 0.1, pointRadius: 0 },
+                    { label: 'p_azul', data: [], borderColor: '#60a5fa', tension: 0.1, pointRadius: 0 },
+                    { label: 'Σp', data: [], borderColor: '#e5e7eb', tension: 0.1, pointRadius: 0 }
+                ]},
+                options: chartOptions('Momento (kg·m/s)')
+            });
+        }
+        
+        // --- Simulation Classes ---
+        class Block {
+            constructor(mass, velocity, initialPosMeters, color, colorLight) {
+                this.m = mass;
+                this.v = velocity;
+                this.initialV = velocity;
+                this.color = color;
+                this.colorLight = colorLight;
+                this.x = (initialPosMeters / simSpaceWidth) * canvas.width;
+            }
+
+            get width() { return 30 + this.m * 3; }
+            get height() { return 40 + this.m * 4; }
+
+            draw(ctx) {
+                const y = canvas.height - this.height - 40;
+                const gradient = ctx.createLinearGradient(this.x, y, this.x, y + this.height);
+                gradient.addColorStop(0, this.colorLight);
+                gradient.addColorStop(1, this.color);
+                ctx.fillStyle = gradient;
+                ctx.strokeStyle = '#111827';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.rect(this.x, y, this.width, this.height);
+                ctx.fill();
+                ctx.stroke();
+            }
+
+            update(dt) {
+                const effectiveSpeed = state.slowMotion ? state.animationSpeed * 0.5 : state.animationSpeed;
+                const pixelSpeed = (this.v / simSpaceWidth) * canvas.width;
+                this.x += pixelSpeed * dt * effectiveSpeed;
+            }
+        }
+
+        // --- Core Functions ---
+        function initialize() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            state.isRunning = false;
+            state.time = 0;
+            state.hasRun = false;
+            setSlidersDisabled(false);
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+
+            block1 = new Block(state.m1, state.v1, state.x1, '#ef4444', '#fca5a5'); // Red
+            block2 = new Block(state.m2, state.v2, state.x2, '#3b82f6', '#93c5fd'); // Blue
+
+            if (block1.x + block1.width > block2.x) {
+               block1.x = block2.x - block1.width - 1;
+            }
+
+            updateUIFromState();
+            createCharts();
+            draw();
+        }
+
+        function updateUIFromState() {
+            mass1ValueSpan.textContent = state.m1.toFixed(1);
+            velocity1ValueSpan.textContent = state.v1.toFixed(1);
+            position1ValueSpan.textContent = state.x1.toFixed(1);
+            mass2ValueSpan.textContent = state.m2.toFixed(1);
+            velocity2ValueSpan.textContent = state.v2.toFixed(1);
+            position2ValueSpan.textContent = state.x2.toFixed(1);
+            elasticityValueSpan.textContent = state.elasticity.toFixed(2);
+            showCMToggle.checked = state.showCM;
+            showVectorsToggle.checked = state.showVectors;
+            showKEToggle.checked = state.showKE;
+            showMomentumToggle.checked = state.showMomentum;
+            slowMotionToggle.checked = state.slowMotion;
+            timerDisplay.textContent = `Tiempo: ${state.time.toFixed(1)}s`;
+            updateInfoBoxes();
+        }
+
+        function updateInfoBoxes() {
+            const initial_ke1 = 0.5 * block1.m * Math.pow(block1.initialV, 2);
+            const initial_p1 = block1.m * block1.initialV;
+            const initial_ke2 = 0.5 * block2.m * Math.pow(block2.initialV, 2);
+            const initial_p2 = block2.m * block2.initialV;
+            ke1ValueSpan.textContent = initial_ke1.toFixed(2);
+            p1ValueSpan.textContent = initial_p1.toFixed(2);
+            ke2ValueSpan.textContent = initial_ke2.toFixed(2);
+            p2ValueSpan.textContent = initial_p2.toFixed(2);
+            currentV1ValueSpan.textContent = block1.v.toFixed(2);
+            currentV2ValueSpan.textContent = block2.v.toFixed(2);
+            const pos1Meters = (block1.x / canvas.width) * simSpaceWidth;
+            const pos2Meters = (block2.x / canvas.width) * simSpaceWidth; // Use start of block for consistency
+            currentP1ValueSpan.textContent = pos1Meters.toFixed(2);
+            currentP2ValueSpan.textContent = pos2Meters.toFixed(2);
+        }
+        
+        function handleCollision() {
+            const {m: m1, v: v1_i} = block1;
+            const {m: m2, v: v2_i} = block2;
+            const e = state.elasticity;
+            block1.v = (m1 * v1_i + m2 * v2_i - m2 * e * (v1_i - v2_i)) / (m1 + m2);
+            block2.v = (m1 * v1_i + m2 * v2_i + m1 * e * (v1_i - v2_i)) / (m1 + m2);
+            collisionSynth.triggerAttackRelease("C4", "8n");
+        }
+        
+        function drawGrid(ctx) {
+            ctx.strokeStyle = 'rgba(107, 114, 128, 0.2)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x <= canvas.width; x += 20) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+            }
+            for (let y = 0; y <= canvas.height; y += 20) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+            }
+        }
+        
+        function drawAxis(ctx) {
+            const y = canvas.height - 20;
+            ctx.strokeStyle = '#9ca3af';
+            ctx.fillStyle = '#9ca3af';
+            ctx.font = '10px Inter';
+
+            for (let i = 0; i <= simSpaceWidth; i++) {
+                const x = (i / simSpaceWidth) * canvas.width;
+                if (i === 0) ctx.textAlign = 'left';
+                else if (i === simSpaceWidth) ctx.textAlign = 'right';
+                else ctx.textAlign = 'center';
+
+                // Main tick with label
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x, y + 5);
+                ctx.stroke();
+                ctx.fillText(i, x, y + 15);
+
+                // Minor tick (0.5)
+                if (i < simSpaceWidth) {
+                    const midX = x + (canvas.width / simSpaceWidth / 2);
+                    ctx.beginPath();
+                    ctx.moveTo(midX, y);
+                    ctx.lineTo(midX, y + 3);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        function drawVector(ctx, block, value, color, yOffset, label) {
+            const y = canvas.height - block.height - 40 - yOffset;
+            const startX = block.x + block.width / 2;
+            const length = (value / simSpaceWidth) * canvas.width * 0.2; // Adjusted scale factor
+            const endX = startX + length;
+            
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(startX, y); ctx.lineTo(endX, y); ctx.stroke();
+            
+            const headlen = 8;
+            const angle = Math.atan2(0, endX - startX);
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(endX, y);
+            ctx.lineTo(endX - headlen * Math.cos(angle - Math.PI / 6), y - headlen * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(endX - headlen * Math.cos(angle + Math.PI / 6), y - headlen * Math.sin(angle + Math.PI / 6));
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.font = '12px Inter';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${label}: ${value.toFixed(1)}`, startX + length / 2, y - 8);
+        }
+
+        function drawKE(ctx, block) {
+            const y = canvas.height - 45;
+            const x = block.x + block.width / 2;
+            const ke = 0.5 * block.m * block.v * block.v;
+            ctx.font = '12px Inter';
+            ctx.fillStyle = '#fef08a';
+            ctx.textAlign = 'center';
+            ctx.fillText(`KE: ${ke.toFixed(1)}J`, x, y);
+        }
+
+        function update(dt) {
+            if (!state.isRunning) return;
+            block1.update(dt);
+            block2.update(dt);
+            if (block1.x <= 0 && block1.v < 0) { block1.v *= -1; block1.x = 0; }
+            if (block1.x + block1.width >= canvas.width && block1.v > 0) { block1.v *= -1; block1.x = canvas.width - block1.width; }
+            if (block2.x <= 0 && block2.v < 0) { block2.v *= -1; block2.x = 0; }
+            if (block2.x + block2.width >= canvas.width && block2.v > 0) { block2.v *= -1; block2.x = canvas.width - block2.width; }
+            
+            if (block1.x + block1.width >= block2.x && block1.v > block2.v) {
+                const overlap = (block1.x + block1.width) - block2.x;
+                block1.x -= overlap / 2;
+                block2.x += overlap / 2;
+                handleCollision();
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawGrid(ctx);
+            const trackY = canvas.height - 40;
+            ctx.fillStyle = '#111827'; ctx.fillRect(0, trackY, canvas.width, 40);
+            ctx.fillStyle = '#4b5563'; ctx.fillRect(0, trackY, canvas.width, 2);
+            drawAxis(ctx);
+            block1.draw(ctx);
+            block2.draw(ctx);
+            
+            if (state.showVectors) { drawVector(ctx, block1, block1.v, '#fef08a', 35, 'v'); drawVector(ctx, block2, block2.v, '#fef08a', 35, 'v'); }
+            if (state.showMomentum) { drawVector(ctx, block1, block1.m * block1.v, '#4ade80', 15, 'p'); drawVector(ctx, block2, block2.m * block2.v, '#4ade80', 15, 'p'); }
+            if (state.showKE) { drawKE(ctx, block1); drawKE(ctx, block2); }
+            if (state.showCM) {
+                const comX = (block1.m * (block1.x + block1.width/2) + block2.m * (block2.x + block2.width/2)) / (block1.m + block2.m);
+                ctx.fillStyle = '#facc15';
+                ctx.beginPath();
+                const y = canvas.height - 40 - 5;
+                ctx.moveTo(comX, y);
+                ctx.lineTo(comX - 5, y - 10);
+                ctx.lineTo(comX + 5, y - 10);
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+        
+        function updateCharts() {
+            if(!state.isRunning) return;
+            const time = state.time;
+            const dataLength = velocityChart.data.datasets[0].data.length;
+            if (dataLength > 300) {
+                velocityChart.data.datasets.forEach(d => d.data.shift());
+                momentumChart.data.datasets.forEach(d => d.data.shift());
+            }
+            const comV = (block1.m * block1.v + block2.m * block2.v) / (block1.m + block2.m);
+            velocityChart.data.datasets[0].data.push({x: time, y: block1.v});
+            velocityChart.data.datasets[1].data.push({x: time, y: block2.v});
+            if(state.showCM) velocityChart.data.datasets[2].data.push({x: time, y: comV});
+            
+            const p1 = block1.m * block1.v;
+            const p2 = block2.m * block2.v;
+            momentumChart.data.datasets[0].data.push({x: time, y: p1});
+            momentumChart.data.datasets[1].data.push({x: time, y: p2});
+            momentumChart.data.datasets[2].data.push({x: time, y: p1 + p2});
+            velocityChart.update('none');
+            momentumChart.update('none');
+        }
+
+        let lastTime = 0;
+        function animate(timestamp) {
+            if (!state.isRunning) return;
+            const deltaTime = (timestamp - lastTime) / 1000 || 0;
+            lastTime = timestamp;
+            state.time += deltaTime;
+            update(deltaTime);
+            draw();
+            updateInfoBoxes(); 
+            updateCharts();
+            timerDisplay.textContent = `Tiempo: ${state.time.toFixed(1)}s`;
+            animationFrameId = requestAnimationFrame(animate);
+        }
+
+        function setSlidersDisabled(disabled) {
+            sliders.forEach(slider => slider.disabled = disabled);
+        }
+
+        // --- Event Listeners ---
+        function setupEventListeners() {
+            runBtn.addEventListener('click', () => {
+                if (Tone.context.state !== 'running') {
+                    Tone.start();
+                }
+                if (!state.isRunning) {
+                    if (state.hasRun) initialize(); 
+                    state.isRunning = true;
+                    state.hasRun = true;
+                    setSlidersDisabled(true);
+                    lastTime = performance.now();
+                    animate(lastTime);
+                }
+            });
+            pauseBtn.addEventListener('click', () => { 
+                state.isRunning = false;
+                setSlidersDisabled(false);
+            });
+            resetBtn.addEventListener('click', initialize);
+
+            mass1Slider.addEventListener('input', (e) => { state.m1 = parseFloat(e.target.value); initialize(); });
+            velocity1Slider.addEventListener('input', (e) => { state.v1 = parseFloat(e.target.value); initialize(); });
+            position1Slider.addEventListener('input', (e) => { state.x1 = parseFloat(e.target.value); initialize(); });
+            mass2Slider.addEventListener('input', (e) => { state.m2 = parseFloat(e.target.value); initialize(); });
+            velocity2Slider.addEventListener('input', (e) => { state.v2 = parseFloat(e.target.value); initialize(); });
+            position2Slider.addEventListener('input', (e) => { state.x2 = parseFloat(e.target.value); initialize(); });
+            
+            elasticitySlider.addEventListener('input', (e) => { 
+                state.elasticity = parseFloat(e.target.value);
+                updateUIFromState();
+            });
+            
+            showCMToggle.addEventListener('change', (e) => { state.showCM = e.target.checked; if(!state.isRunning) draw(); });
+            showVectorsToggle.addEventListener('change', (e) => { state.showVectors = e.target.checked; if(!state.isRunning) draw(); });
+            showKEToggle.addEventListener('change', (e) => { state.showKE = e.target.checked; if(!state.isRunning) draw(); });
+            showMomentumToggle.addEventListener('change', (e) => { state.showMomentum = e.target.checked; if(!state.isRunning) draw(); });
+            slowMotionToggle.addEventListener('change', (e) => { state.slowMotion = e.target.checked; });
+            
+            let resizeTimeout;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(initialize, 150);
+            });
+        }
+
+        // --- Initial Load ---
+        document.addEventListener('DOMContentLoaded', () => {
+            setupEventListeners();
+            initialize();
+        });
+    </script>
+</body>
+</html>
