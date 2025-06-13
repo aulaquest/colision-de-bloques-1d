@@ -259,6 +259,8 @@
         let block1, block2;
         let animationFrameId;
         const collisionSynth = new Tone.Synth().toDestination();
+        let lastCollisionSoundTime = -1;
+        const minSoundInterval = 0.05;
         
         // --- Chart Setup ---
         let velocityChart, momentumChart;
@@ -317,7 +319,6 @@
             });
         }
         
-        // --- Simulation Classes ---
         class Block {
             constructor(mass, velocity, initialPosMeters, color, colorLight) {
                 this.m = mass;
@@ -325,7 +326,8 @@
                 this.initialV = velocity;
                 this.color = color;
                 this.colorLight = colorLight;
-                this.x = (initialPosMeters / simSpaceWidth) * canvas.width;
+                this.xInMeters = initialPosMeters;
+                this.x = (this.xInMeters / simSpaceWidth) * canvas.width;
             }
 
             get width() { return 30 + this.m * 3; }
@@ -347,8 +349,8 @@
 
             update(dt) {
                 const effectiveSpeed = state.slowMotion ? state.animationSpeed * 0.5 : state.animationSpeed;
-                const pixelSpeed = (this.v / simSpaceWidth) * canvas.width;
-                this.x += pixelSpeed * dt * effectiveSpeed;
+                this.xInMeters += this.v * dt * effectiveSpeed;
+                this.x = (this.xInMeters / simSpaceWidth) * canvas.width;
             }
         }
         
@@ -367,7 +369,6 @@
             state.slowMotion = slowMotionToggle.checked;
         }
 
-        // --- Core Functions ---
         function resetSimulation() {
             if (animationFrameId) cancelAnimationFrame(animationFrameId);
             readStateFromUI();
@@ -380,6 +381,7 @@
         }
 
         function setupScene() {
+            if (canvas.offsetWidth === 0) return;
             canvas.width = canvas.offsetWidth;
             canvas.height = canvas.offsetHeight;
             
@@ -388,10 +390,11 @@
 
             if (block1.x + block1.width > block2.x) {
                block1.x = block2.x - block1.width - 1;
+               block1.xInMeters = (block1.x / canvas.width) * simSpaceWidth;
             }
             runPauseBtn.textContent = 'Ejecutar';
             updateUIFromState();
-            createCharts(); // Create charts with the (now empty) data
+            createCharts();
             draw();
         }
 
@@ -418,10 +421,8 @@
             p2ValueSpan.textContent = initial_p2.toFixed(2);
             currentV1ValueSpan.textContent = block1.v.toFixed(2);
             currentV2ValueSpan.textContent = block2.v.toFixed(2);
-            const pos1Meters = (block1.x / canvas.width) * simSpaceWidth;
-            const pos2Meters = (block2.x / canvas.width) * simSpaceWidth;
-            currentP1ValueSpan.textContent = pos1Meters.toFixed(2);
-            currentP2ValueSpan.textContent = pos2Meters.toFixed(2);
+            currentP1ValueSpan.textContent = block1.xInMeters.toFixed(2);
+            currentP2ValueSpan.textContent = block2.xInMeters.toFixed(2);
         }
         
         function handleCollision() {
@@ -430,7 +431,12 @@
             const e = state.elasticity;
             block1.v = (m1 * v1_i + m2 * v2_i - m2 * e * (v1_i - v2_i)) / (m1 + m2);
             block2.v = (m1 * v1_i + m2 * v2_i + m1 * e * (v1_i - v2_i)) / (m1 + m2);
-            collisionSynth.triggerAttackRelease("C4", "8n");
+            
+            const now = Tone.now();
+            if (now > lastCollisionSoundTime + minSoundInterval) {
+                collisionSynth.triggerAttackRelease("C4", "8n", now);
+                lastCollisionSoundTime = now;
+            }
         }
         
         function drawGrid(ctx) {
@@ -511,20 +517,26 @@
             if (!state.isRunning) return;
             block1.update(dt);
             block2.update(dt);
-            if (block1.x <= 0 && block1.v < 0) { block1.v *= -1; block1.x = 0; }
-            if (block1.x + block1.width >= canvas.width && block1.v > 0) { block1.v *= -1; block1.x = canvas.width - block1.width; }
-            if (block2.x <= 0 && block2.v < 0) { block2.v *= -1; block2.x = 0; }
-            if (block2.x + block2.width >= canvas.width && block2.v > 0) { block2.v *= -1; block2.x = canvas.width - block2.width; }
+            if (block1.xInMeters <= 0 && block1.v < 0) { block1.v *= -1; block1.xInMeters = 0; }
+            const block1EndMeters = ((block1.x + block1.width) / canvas.width) * simSpaceWidth;
+            if (block1EndMeters >= simSpaceWidth && block1.v > 0) { block1.v *= -1; block1.xInMeters = simSpaceWidth - (block1.width / canvas.width * simSpaceWidth); }
+            if (block2.xInMeters <= 0 && block2.v < 0) { block2.v *= -1; block2.xInMeters = 0; }
+            const block2EndMeters = ((block2.x + block2.width) / canvas.width) * simSpaceWidth;
+            if (block2EndMeters >= simSpaceWidth && block2.v > 0) { block2.v *= -1; block2.xInMeters = simSpaceWidth - (block2.width / canvas.width * simSpaceWidth); }
             
-            if (block1.x + block1.width >= block2.x && block1.v > block2.v) {
-                const overlap = (block1.x + block1.width) - block2.x;
+            const block1EndPixel = block1.x + block1.width;
+            if (block1EndPixel >= block2.x && block1.v > block2.v) {
+                const overlap = block1EndPixel - block2.x;
                 block1.x -= overlap / 2;
                 block2.x += overlap / 2;
+                block1.xInMeters = (block1.x / canvas.width) * simSpaceWidth;
+                block2.xInMeters = (block2.x / canvas.width) * simSpaceWidth;
                 handleCollision();
             }
         }
 
         function draw() {
+            if (!canvas.width || !canvas.height) return;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             drawGrid(ctx);
             const trackY = canvas.height - 40;
@@ -535,7 +547,12 @@
             block2.draw(ctx);
             
             if (state.showVectors) { drawVector(ctx, block1, block1.v, '#fef08a', 35, 'v'); drawVector(ctx, block2, block2.v, '#fef08a', 35, 'v'); }
-            if (state.showMomentum) { drawVector(ctx, block1, block1.m * block1.v, '#4ade80', 15, 'p'); drawVector(ctx, block2, block2.m * block2.v, '#4ade80', 15, 'p'); }
+            if (state.showMomentum) {
+                drawVector(ctx, block1, block1.m * block1.v, '#4ade80', 15, 'p');
+                drawVector(ctx, block2, block2.m * block2.v, '#4ade80', 15, 'p');
+                const pTotal = block1.m * block1.v + block2.m * block2.v;
+                drawVector(ctx, { x: canvas.width / 2 - 15, width: 30, height: 0 }, pTotal, '#ffffff', 55, 'Σp');
+            }
             if (state.showKE) { drawKE(ctx, block1); drawKE(ctx, block2); }
             if (state.showCM) {
                 const comX = (block1.m * (block1.x + block1.width/2) + block2.m * (block2.x + block2.width/2)) / (block1.m + block2.m);
@@ -551,7 +568,6 @@
         }
         
         function updateCharts() {
-            if(!state.isRunning) return;
             const time = state.time;
             
             const comV = (block1.m * block1.v + block2.m * block2.v) / (block1.m + block2.m);
@@ -595,9 +611,8 @@
             if (state.isRunning) {
                 if (!state.hasRun) {
                     readStateFromUI();
-                    resetChartData(); // Clear previous data
-                    createCharts();   // Recreate charts for the new run
-                    setupScene();     // Set up blocks with initial state
+                    resetChartData(); 
+                    createCharts();
                     state.hasRun = true;
                 }
                 runPauseBtn.textContent = 'Pausa';
@@ -617,6 +632,7 @@
 
             sliders.forEach(slider => {
                 slider.addEventListener('input', () => {
+                    if (state.isRunning) return;
                     readStateFromUI();
                     resetSimulation();
                 });
@@ -646,5 +662,4 @@
         });
     </script>
 </body>
-    
-</html
+</html>
